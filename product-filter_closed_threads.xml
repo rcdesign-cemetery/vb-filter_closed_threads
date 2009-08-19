@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<product productid="filter_closed_threads" active="1">
+	<title>Filter Closed Threads</title>
+	<description>Add option to hide closed threads</description>
+	<version>0.3</version>
+	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=filter_closed_threads]]></url>
+	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=productcheck&pid=filter_closed_threads]]></versioncheckurl>
+	<apm_releasedate>1234130400</apm_releasedate>
+	<apm_author>Dmitry Titov, Vitaly Puzrin</apm_author>
+	<apm_relatedurl />
+	<apm_extrainfo />
+	<apm_extraedit />
+	<dependencies>
+	</dependencies>
+	<codes>
+		<code version="0.1">
+			<installcode><![CDATA[$db->hide_errors();
+
+$db->query_write("
+  CREATE TABLE IF NOT EXISTS `" . TABLE_PREFIX . "fct_settings` (
+    `userid` int(10) unsigned NOT NULL,
+    `forumid` smallint(5) unsigned NOT NULL,
+    `fct_hide` tinyint(3) unsigned NOT NULL default '0',
+    PRIMARY KEY  (`userid`,`forumid`)
+  ) COMMENT='Filter closed threads settings by user-forum';
+");
+
+$db->show_errors();
+
+if (!$db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "forum LIKE 'fct_hide_by_default'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "forum ADD COLUMN `fct_hide_by_default` TINYINT UNSIGNED NOT NULL DEFAULT '0'");
+
+if (!$db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "forum LIKE 'fct_allow_user_set'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "forum ADD COLUMN `fct_allow_user_set` TINYINT UNSIGNED NOT NULL DEFAULT '0'");]]></installcode>
+			<uninstallcode><![CDATA[$db->query_write("DROP TABLE IF EXISTS `" . TABLE_PREFIX . "fct_settings`");
+
+if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "forum LIKE 'fct_hide_by_default'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "forum DROP `fct_hide_by_default`");
+
+if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "forum LIKE 'fct_allow_user_set'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "forum DROP `fct_allow_user_set`");]]></uninstallcode>
+		</code>
+		<code version="0.3">
+			<installcode><![CDATA[if (!$db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "user LIKE 'fct_data'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "user ADD COLUMN `fct_data` TEXT NOT NULL");
+
+$db->query_write("DROP TABLE IF EXISTS `" . TABLE_PREFIX . "fct_settings`");]]></installcode>
+			<uninstallcode><![CDATA[if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "user LIKE 'fct_data'"))
+  $db->query_write("ALTER TABLE " . TABLE_PREFIX . "user DROP `fct_data`");]]></uninstallcode>
+		</code>
+	</codes>
+	<templates>
+	</templates>
+	<plugins>
+		<plugin active="1" executionorder="5">
+			<title>Fetch user info</title>
+			<hookname>fetch_userinfo</hookname>
+			<phpcode><![CDATA[if (!empty($user['fct_data']))
+{
+  eval('$user["fct_data"] = unserialize($user["fct_data"]);');
+}
+else
+{
+  $user['fct_data'] = array();
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Forum Admin</title>
+			<hookname>forumadmin_edit_form</hookname>
+			<phpcode><![CDATA[print_table_header($vbphrase['fct_settings']);
+print_yes_no_row($vbphrase['fct_hide_by_default'], 'forum[fct_hide_by_default]', isset($forum['fct_hide_by_default'])?$forum['fct_hide_by_default']:0);
+print_yes_no_row($vbphrase['fct_allow_user_set'], 'forum[fct_allow_user_set]', isset($forum['fct_allow_user_set'])?$forum['fct_allow_user_set']:0);]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Forum Admin Start</title>
+			<hookname>forumdata_start</hookname>
+			<phpcode><![CDATA[$this->validfields['fct_hide_by_default'] = array(TYPE_BOOL, REQ_NO);
+$this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Check for filter availability</title>
+			<hookname>forumdisplay_complete</hookname>
+			<phpcode><![CDATA[$show['filter_closed_threads'] = $foruminfo['fct_allow_user_set'] ? true : false;
+
+if ($show['filter_closed_threads'])
+{
+  $filterclosedthreads = $filterclosedthreads ? 'hide' : 'show';
+
+  $filterclosedthreadssel = array(
+    $filterclosedthreads => 'selected="selected"'
+  );
+}
+
+$sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Modify threads select query</title>
+			<hookname>forumdisplay_query</hookname>
+			<phpcode><![CDATA[if ($filterclosedthreads)
+{
+  $hook_query_where .= ' AND thread.open = 1 ';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Modify threadid select query</title>
+			<hookname>forumdisplay_query_threadid</hookname>
+			<phpcode><![CDATA[if ($filterclosedthreads)
+{
+  $hook_query_where .= ' AND thread.open = 1 ';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Modify threads count select query</title>
+			<hookname>forumdisplay_query_threadscount</hookname>
+			<phpcode><![CDATA[if ($filterclosedthreads)
+{
+  $hook_query_where .= ' AND thread.open = 1 ';
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Get/set filter state</title>
+			<hookname>forumdisplay_start</hookname>
+			<phpcode><![CDATA[$vbulletin->input->clean_array_gpc('r', array(
+  'closed' => TYPE_STR,
+));
+
+// default value
+$filterclosedthreads =
+  $foruminfo['forumid']
+    ? intval($foruminfo['fct_hide_by_default'])
+    : 0;
+
+if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
+{
+  // try to get saved state
+  if ($vbulletin->userinfo['userid'] > 0)
+  {
+    // is state saved by user
+    $fct_state_saved =
+      array_key_exists("$foruminfo[forumid]", $vbulletin->userinfo['fct_data'])
+        ? true
+        : false;
+
+    // get saved or default value
+    $filterclosedthreads =
+      $fct_state_saved
+        // saved state
+        ? $vbulletin->userinfo['fct_data']["$foruminfo[forumid]"]
+        // default state
+        : $foruminfo['fct_hide_by_default'];
+
+    unset($fct_state_saved);
+  }
+
+  if (!empty($vbulletin->GPC['closed']))
+  {
+    $fct_temp_state =
+      $vbulletin->GPC['closed'] == 'hide'
+        ? 1
+        : 0;
+
+    if ($fct_temp_state != $filterclosedthreads)
+    {
+      global $usercache;
+
+      // update saved state
+      $filterclosedthreads = $fct_temp_state;
+
+      if ($vbulletin->userinfo['userid'] > 0)
+      {
+        $fct_userid = $vbulletin->userinfo['userid'];
+
+        // update cache
+        if(isset($usercache["$fct_userid"]))
+        {
+          $usercache["$fct_userid"]['fct_data']["$foruminfo[forumid]"] =
+            $filterclosedthreads;
+        }
+
+        // update user profile
+        $vbulletin->userinfo['fct_data']["$foruminfo[forumid]"] =
+          $filterclosedthreads;
+
+        // init user data manager
+        $fct_userdata =& datamanager_init('User', $vbulletin, ERRTYPE_STANDARD);
+        $fct_userdata->set_existing($vbulletin->userinfo);
+        $fct_userdata->save();
+
+        unset($fct_userdata, $fct_userid);
+      }
+    }
+
+    unset($fct_temp_state);
+  }
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Modify template</title>
+			<hookname>parse_templates</hookname>
+			<phpcode><![CDATA[$fct_search  = array(
+    '<td class=\"smallfont\" colspan=\"2\">'
+  );
+
+$fct_replace = array(
+	'	".(($show[filter_closed_threads]) ? ("
+			<td class=\"smallfont\" style=\"padding-$stylevar[right]:$stylevar[cellpadding]px\">
+				<div><label for=\"sel_filterclosedthreads\">$vbphrase[closed_threads]</label></div>
+				<select name=\"closed\" id=\"sel_filterclosedthreads\">
+					<option value=\"hide\" $filterclosedthreadssel[hide]>$vbphrase[hide]</option>
+					<option value=\"show\" $filterclosedthreadssel[show]>$vbphrase[show]</option>
+				</select>
+			</td>
+			<td class=\"smallfont\">
+	") : ("
+			<td class=\"smallfont\" colspan=\"2\">
+	"))."'
+  );
+
+$vbulletin->templatecache['FORUMDISPLAY'] = str_replace(
+    $fct_search  ,
+    $fct_replace ,
+    $vbulletin->templatecache['FORUMDISPLAY']
+  );
+
+unset( $fct_search, $fct_replace );]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Prepare data to save</title>
+			<hookname>userdata_presave</hookname>
+			<phpcode><![CDATA[$this->set('fct_data', serialize($this->fetch_field('fct_data')));]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Add valid userdata field</title>
+			<hookname>userdata_start</hookname>
+			<phpcode><![CDATA[$this->validfields['fct_data'] = array(TYPE_STR, REQ_NO);]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Add user field to be prepared</title>
+			<hookname>userprofile_create</hookname>
+			<phpcode><![CDATA[$this->auto_prepare[] = 'fct_data';]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Prepare user field</title>
+			<hookname>userprofile_prepare</hookname>
+			<phpcode><![CDATA[if ($field == 'fct_data')
+{
+  $this->prepared["$field"] = array();
+
+  if (!empty($this->userinfo["$field"]))
+  {
+    eval('$this->prepared["$field"] = unserialize($this->userinfo["$field"]);');
+  }
+
+  $handled = true;
+}]]></phpcode>
+		</plugin>
+	</plugins>
+	<phrases>
+		<phrasetype name="GLOBAL" fieldname="global">
+			<phrase name="closed_threads" date="1231265121" username="Wildev" version=""><![CDATA[Closed Threads]]></phrase>
+			<phrase name="fct_allow_user_set" date="1231339744" username="Wildev" version=""><![CDATA[Show filter to user?]]></phrase>
+			<phrase name="fct_hide_by_default" date="1231250863" username="Wildev" version=""><![CDATA[Hide closed threads by default?]]></phrase>
+			<phrase name="fct_settings" date="1231250798" username="Wildev" version=""><![CDATA[Filter Closed Threads settings]]></phrase>
+			<phrase name="hide" date="1231265151" username="Wildev" version=""><![CDATA[Hide]]></phrase>
+			<phrase name="show" date="1231265169" username="Wildev" version=""><![CDATA[Show]]></phrase>
+		</phrasetype>
+	</phrases>
+	<options>
+	</options>
+	<helptopics>
+	</helptopics>
+	<cronentries>
+	</cronentries>
+	<faqentries>
+	</faqentries>
+	<templateedits>
+	</templateedits>
+</product>
