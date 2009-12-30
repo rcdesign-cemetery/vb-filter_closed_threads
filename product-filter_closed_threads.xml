@@ -3,10 +3,10 @@
 <product productid="filter_closed_threads" active="1">
 	<title>Filter Closed Threads</title>
 	<description>Add option to hide closed threads</description>
-	<version>0.3</version>
+	<version>0.4</version>
 	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=filter_closed_threads]]></url>
 	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=productcheck&pid=filter_closed_threads]]></versioncheckurl>
-	<apm_releasedate>1234130400</apm_releasedate>
+	<apm_releasedate>1262124000</apm_releasedate>
 	<apm_author>Dmitry Titov, Vitaly Puzrin</apm_author>
 	<apm_relatedurl />
 	<apm_extrainfo />
@@ -49,22 +49,14 @@ $db->query_write("DROP TABLE IF EXISTS `" . TABLE_PREFIX . "fct_settings`");]]><
 			<uninstallcode><![CDATA[if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "user LIKE 'fct_data'"))
   $db->query_write("ALTER TABLE " . TABLE_PREFIX . "user DROP `fct_data`");]]></uninstallcode>
 		</code>
+		<code version="0.4">
+			<installcode><![CDATA[$db->query_write("UPDATE " . TABLE_PREFIX . "user SET `fct_data`=''");]]></installcode>
+			<uninstallcode />
+		</code>
 	</codes>
 	<templates>
 	</templates>
 	<plugins>
-		<plugin active="1" executionorder="5">
-			<title>Fetch user info</title>
-			<hookname>fetch_userinfo</hookname>
-			<phpcode><![CDATA[if (!empty($user['fct_data']))
-{
-  eval('$user["fct_data"] = unserialize($user["fct_data"]);');
-}
-else
-{
-  $user['fct_data'] = array();
-}]]></phpcode>
-		</plugin>
 		<plugin active="1" executionorder="5">
 			<title>Forum Admin</title>
 			<hookname>forumadmin_edit_form</hookname>
@@ -125,7 +117,7 @@ $sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
   'closed' => TYPE_STR,
 ));
 
-// default value
+// default value (for excluded forums too)
 $filterclosedthreads =
   $foruminfo['forumid']
     ? intval($foruminfo['fct_hide_by_default'])
@@ -134,64 +126,45 @@ $filterclosedthreads =
 if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
 {
   // try to get saved state
-  if ($vbulletin->userinfo['userid'] > 0)
+  if ($vbulletin->userinfo['userid'])
   {
-    // is state saved by user
-    $fct_state_saved =
-      array_key_exists("$foruminfo[forumid]", $vbulletin->userinfo['fct_data'])
-        ? true
-        : false;
+    // unserialise filters array
+    if (($fct_data = unserialize($vbulletin->userinfo['fct_data'])) === false)
+        $fct_data = array();
 
     // get saved or default value
-    $filterclosedthreads =
-      $fct_state_saved
-        // saved state
-        ? $vbulletin->userinfo['fct_data']["$foruminfo[forumid]"]
-        // default state
-        : $foruminfo['fct_hide_by_default'];
-
-    unset($fct_state_saved);
+    $filterclosedthreads = array_key_exists("$foruminfo[forumid]", $fct_data) ? $fct_data["$foruminfo[forumid]"] : $foruminfo['fct_hide_by_default'];
   }
 
   if (!empty($vbulletin->GPC['closed']))
   {
-    $fct_temp_state =
-      $vbulletin->GPC['closed'] == 'hide'
-        ? 1
-        : 0;
-
-    if ($fct_temp_state != $filterclosedthreads)
+    $fct_new_state = $vbulletin->GPC['closed'] == 'hide' ? 1 : 0;
+    if ($fct_new_state != $filterclosedthreads)
     {
-      global $usercache;
-
       // update saved state
-      $filterclosedthreads = $fct_temp_state;
+      $filterclosedthreads = $fct_new_state;
 
-      if ($vbulletin->userinfo['userid'] > 0)
+      // Save state only for registered users
+      if ($vbulletin->userinfo['userid'])
       {
-        $fct_userid = $vbulletin->userinfo['userid'];
-
-        // update cache
-        if(isset($usercache["$fct_userid"]))
+        if ($fct_new_state <> intval($foruminfo['fct_hide_by_default']))
         {
-          $usercache["$fct_userid"]['fct_data']["$foruminfo[forumid]"] =
-            $filterclosedthreads;
+          $fct_data["$foruminfo[forumid]"] = $fct_new_state;
+        }
+        else {
+          unset($fct_data["$foruminfo[forumid]"]);
         }
 
-        // update user profile
-        $vbulletin->userinfo['fct_data']["$foruminfo[forumid]"] =
-          $filterclosedthreads;
-
         // init user data manager
-        $fct_userdata =& datamanager_init('User', $vbulletin, ERRTYPE_STANDARD);
+        $fct_userdata =& datamanager_init('User', $vbulletin, ERRTYPE_ARRAY);
         $fct_userdata->set_existing($vbulletin->userinfo);
+        $fct_userdata->set('fct_data', $fct_data);
         $fct_userdata->save();
 
-        unset($fct_userdata, $fct_userid);
+        unset($fct_userdata);
       }
     }
-
-    unset($fct_temp_state);
+    unset($fct_new_state);
   }
 }]]></phpcode>
 		</plugin>
@@ -226,34 +199,9 @@ $vbulletin->templatecache['FORUMDISPLAY'] = str_replace(
 unset( $fct_search, $fct_replace );]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
-			<title>Prepare data to save</title>
-			<hookname>userdata_presave</hookname>
-			<phpcode><![CDATA[$this->set('fct_data', serialize($this->fetch_field('fct_data')));]]></phpcode>
-		</plugin>
-		<plugin active="1" executionorder="5">
 			<title>Add valid userdata field</title>
 			<hookname>userdata_start</hookname>
-			<phpcode><![CDATA[$this->validfields['fct_data'] = array(TYPE_STR, REQ_NO);]]></phpcode>
-		</plugin>
-		<plugin active="1" executionorder="5">
-			<title>Add user field to be prepared</title>
-			<hookname>userprofile_create</hookname>
-			<phpcode><![CDATA[$this->auto_prepare[] = 'fct_data';]]></phpcode>
-		</plugin>
-		<plugin active="1" executionorder="5">
-			<title>Prepare user field</title>
-			<hookname>userprofile_prepare</hookname>
-			<phpcode><![CDATA[if ($field == 'fct_data')
-{
-  $this->prepared["$field"] = array();
-
-  if (!empty($this->userinfo["$field"]))
-  {
-    eval('$this->prepared["$field"] = unserialize($this->userinfo["$field"]);');
-  }
-
-  $handled = true;
-}]]></phpcode>
+			<phpcode><![CDATA[$this->validfields['fct_data'] = array(TYPE_ARRAY_STR, REQ_NO, VF_METHOD, 'verify_serialized');]]></phpcode>
 		</plugin>
 	</plugins>
 	<phrases>
