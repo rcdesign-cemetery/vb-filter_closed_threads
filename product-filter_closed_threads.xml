@@ -3,11 +3,11 @@
 <product productid="filter_closed_threads" active="1">
 	<title>Filter Closed Threads</title>
 	<description>Add option to hide closed threads</description>
-	<version>0.4</version>
+	<version>0.5</version>
 	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=filter_closed_threads]]></url>
 	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=productcheck&pid=filter_closed_threads]]></versioncheckurl>
-	<apm_releasedate>1262124000</apm_releasedate>
-	<apm_author>Dmitry Titov, Vitaly Puzrin</apm_author>
+	<apm_releasedate>0</apm_releasedate>
+	<apm_author />
 	<apm_relatedurl />
 	<apm_extrainfo />
 	<apm_extraedit />
@@ -55,8 +55,27 @@ $db->query_write("DROP TABLE IF EXISTS `" . TABLE_PREFIX . "fct_settings`");]]><
 		</code>
 	</codes>
 	<templates>
+		<template name="filter_closed_threads_template" templatetype="template" date="1274169784" username="sawoy" version="0.5"><![CDATA[<div class="options_input_block">
+  <label for="fct_closed_id">{vb:phrase closed_threads}</label>
+  <select name="tclosed" id="fct_closed_id">
+    <option value="hide" {vb:raw closed_selection.hide}>{vb:phrase hide}</option>
+    <option value="show" {vb:raw closed_selection.show}>{vb:phrase show}</option>
+  </select>
+</div>]]></template>
 	</templates>
+	<stylevardfns>
+	</stylevardfns>
+	<stylevars>
+	</stylevars>
 	<plugins>
+		<plugin active="1" executionorder="5">
+			<title>Cache template</title>
+			<hookname>cache_templates</hookname>
+			<phpcode><![CDATA[if (in_array('FORUMDISPLAY', $cache))
+{
+    $cache[] = 'filter_closed_threads_template';
+}]]></phpcode>
+		</plugin>
 		<plugin active="1" executionorder="5">
 			<title>Forum Admin</title>
 			<hookname>forumadmin_edit_form</hookname>
@@ -71,25 +90,33 @@ print_yes_no_row($vbphrase['fct_allow_user_set'], 'forum[fct_allow_user_set]', i
 $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
-			<title>Check for filter availability</title>
+			<title>Modify template</title>
 			<hookname>forumdisplay_complete</hookname>
-			<phpcode><![CDATA[$show['filter_closed_threads'] = $foruminfo['fct_allow_user_set'] ? true : false;
-
-if ($show['filter_closed_threads'])
+			<phpcode><![CDATA[if ($foruminfo['fct_allow_user_set'])
 {
-  $filterclosedthreads = $filterclosedthreads ? 'hide' : 'show';
+    $fct_closed_selected = $fct_closed ? 'hide' : 'show';
 
-  $filterclosedthreadssel = array(
-    $filterclosedthreads => 'selected="selected"'
-  );
-}
+    $closed_selection = array(
+        'hide' => '',
+        'show' => '',
+    );
+    $closed_selection[ $fct_closed_selected ] = 'selected="selected"';
 
-$sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
+    $pattern = '<div class="options_input_block">
+					<label for="sel_daysprune">\' . vB_Template_Runtime::parsePhrase("show_threads_from_the") . \'</label>';
+    $replace = vB_Template::fetch_template_raw('filter_closed_threads_template') . $pattern;
+
+    $vbulletin->templatecache['FORUMDISPLAY'] = str_replace( $pattern, $replace, $vbulletin->templatecache['FORUMDISPLAY'] );
+
+    vB_Template::preRegister('FORUMDISPLAY', array( 'closed_selection' => $closed_selection ));
+
+    $url .= "&amp;tclosed=$fct_closed_selected";
+}]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
 			<title>Modify threads select query</title>
 			<hookname>forumdisplay_query</hookname>
-			<phpcode><![CDATA[if ($filterclosedthreads)
+			<phpcode><![CDATA[if ($fct_closed)
 {
   $hook_query_where .= ' AND thread.open = 1 ';
 }]]></phpcode>
@@ -97,7 +124,7 @@ $sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
 		<plugin active="1" executionorder="5">
 			<title>Modify threadid select query</title>
 			<hookname>forumdisplay_query_threadid</hookname>
-			<phpcode><![CDATA[if ($filterclosedthreads)
+			<phpcode><![CDATA[if ($fct_closed)
 {
   $hook_query_where .= ' AND thread.open = 1 ';
 }]]></phpcode>
@@ -105,7 +132,7 @@ $sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
 		<plugin active="1" executionorder="5">
 			<title>Modify threads count select query</title>
 			<hookname>forumdisplay_query_threadscount</hookname>
-			<phpcode><![CDATA[if ($filterclosedthreads)
+			<phpcode><![CDATA[if ($fct_closed)
 {
   $hook_query_where .= ' AND thread.open = 1 ';
 }]]></phpcode>
@@ -114,11 +141,11 @@ $sorturl .= "&amp;filterclosedthreads=$filterclosedthreads";]]></phpcode>
 			<title>Get/set filter state</title>
 			<hookname>forumdisplay_start</hookname>
 			<phpcode><![CDATA[$vbulletin->input->clean_array_gpc('r', array(
-  'closed' => TYPE_STR,
+  'tclosed' => TYPE_STR,
 ));
 
 // default value (for excluded forums too)
-$filterclosedthreads =
+$fct_closed =
   $foruminfo['forumid']
     ? intval($foruminfo['fct_hide_by_default'])
     : 0;
@@ -130,19 +157,21 @@ if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
   {
     // unserialise filters array
     if (($fct_data = unserialize($vbulletin->userinfo['fct_data'])) === false)
+    {
         $fct_data = array();
+    }
 
     // get saved or default value
-    $filterclosedthreads = array_key_exists("$foruminfo[forumid]", $fct_data) ? $fct_data["$foruminfo[forumid]"] : $foruminfo['fct_hide_by_default'];
+    $fct_closed = array_key_exists("$foruminfo[forumid]", $fct_data) ? $fct_data["$foruminfo[forumid]"] : $foruminfo['fct_hide_by_default'];
   }
 
-  if (!empty($vbulletin->GPC['closed']))
+  if (!empty($vbulletin->GPC['tclosed']))
   {
-    $fct_new_state = $vbulletin->GPC['closed'] == 'hide' ? 1 : 0;
-    if ($fct_new_state != $filterclosedthreads)
+    $fct_new_state = $vbulletin->GPC['tclosed'] == 'hide' ? 1 : 0;
+    if ($fct_new_state != $fct_closed)
     {
       // update saved state
-      $filterclosedthreads = $fct_new_state;
+      $fct_closed = $fct_new_state;
 
       // Save state only for registered users
       if ($vbulletin->userinfo['userid'])
@@ -169,36 +198,6 @@ if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
-			<title>Modify template</title>
-			<hookname>parse_templates</hookname>
-			<phpcode><![CDATA[$fct_search  = array(
-    '<td class=\"smallfont\" colspan=\"2\">'
-  );
-
-$fct_replace = array(
-	'	".(($show[filter_closed_threads]) ? ("
-			<td class=\"smallfont\" style=\"padding-$stylevar[right]:$stylevar[cellpadding]px\">
-				<div><label for=\"sel_filterclosedthreads\">$vbphrase[closed_threads]</label></div>
-				<select name=\"closed\" id=\"sel_filterclosedthreads\">
-					<option value=\"hide\" $filterclosedthreadssel[hide]>$vbphrase[hide]</option>
-					<option value=\"show\" $filterclosedthreadssel[show]>$vbphrase[show]</option>
-				</select>
-			</td>
-			<td class=\"smallfont\">
-	") : ("
-			<td class=\"smallfont\" colspan=\"2\">
-	"))."'
-  );
-
-$vbulletin->templatecache['FORUMDISPLAY'] = str_replace(
-    $fct_search  ,
-    $fct_replace ,
-    $vbulletin->templatecache['FORUMDISPLAY']
-  );
-
-unset( $fct_search, $fct_replace );]]></phpcode>
-		</plugin>
-		<plugin active="1" executionorder="5">
 			<title>Add valid userdata field</title>
 			<hookname>userdata_start</hookname>
 			<phpcode><![CDATA[$this->validfields['fct_data'] = array(TYPE_ARRAY_STR, REQ_NO, VF_METHOD, 'verify_serialized');]]></phpcode>
@@ -222,6 +221,4 @@ unset( $fct_search, $fct_replace );]]></phpcode>
 	</cronentries>
 	<faqentries>
 	</faqentries>
-	<templateedits>
-	</templateedits>
 </product>
