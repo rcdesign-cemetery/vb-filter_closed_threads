@@ -53,6 +53,16 @@ $db->query_write("DROP TABLE IF EXISTS `" . TABLE_PREFIX . "fct_settings`");]]><
 			<installcode><![CDATA[$db->query_write("UPDATE " . TABLE_PREFIX . "user SET `fct_data`=''");]]></installcode>
 			<uninstallcode />
 		</code>
+		<code version="0.5">
+			<installcode><![CDATA[$db->query_write("ALTER TABLE " .TABLE_PREFIX." usertextfield ADD `fct_data` MEDIUMTEXT NULL"); 
+if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "user LIKE 'fct_data'"))
+{
+    $db->query_write("UPDATE " .TABLE_PREFIX. "user as user, " .TABLE_PREFIX. "usertextfield as usertextfield SET  usertextfield.fct_data = user.fct_data   WHERE user.userid = usertextfield.userid");
+    $db->query_write("ALTER TABLE " . TABLE_PREFIX . "user DROP `fct_data`");
+}]]></installcode>
+			<uninstallcode><![CDATA[if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "usertextfield LIKE 'fct_data'"))
+    $db->query_write("ALTER TABLE " . TABLE_PREFIX . "usertextfield DROP `fct_data`");]]></uninstallcode>
+		</code>
 	</codes>
 	<templates>
 		<template name="filter_closed_threads_template" templatetype="template" date="1274169784" username="sawoy" version="0.5"><![CDATA[<div class="options_input_block">
@@ -118,7 +128,8 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
 			<hookname>forumdisplay_query</hookname>
 			<phpcode><![CDATA[if ($fct_closed)
 {
-  $hook_query_where .= ' AND thread.open = 1 ';
+  
+  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
@@ -126,7 +137,7 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
 			<hookname>forumdisplay_query_threadid</hookname>
 			<phpcode><![CDATA[if ($fct_closed)
 {
-  $hook_query_where .= ' AND thread.open = 1 ';
+  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
@@ -134,7 +145,7 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
 			<hookname>forumdisplay_query_threadscount</hookname>
 			<phpcode><![CDATA[if ($fct_closed)
 {
-  $hook_query_where .= ' AND thread.open = 1 ';
+  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
@@ -187,7 +198,7 @@ if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
         // init user data manager
         $fct_userdata =& datamanager_init('User', $vbulletin, ERRTYPE_ARRAY);
         $fct_userdata->set_existing($vbulletin->userinfo);
-        $fct_userdata->set('fct_data', $fct_data);
+        $fct_userdata->setr('fct_data', $fct_data);
         $fct_userdata->save();
 
         unset($fct_userdata);
@@ -195,6 +206,14 @@ if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
     }
     unset($fct_new_state);
   }
+}]]></phpcode>
+		</plugin>
+		<plugin active="1" executionorder="5">
+			<title>Associate  fct_data field with usertextfield table</title>
+			<hookname>userdata_doset</hookname>
+			<phpcode><![CDATA[if ($fieldname == 'fct_data')
+{
+   $tables = array('usertextfield');
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
@@ -221,4 +240,6 @@ if ($foruminfo['forumid'] AND $foruminfo['fct_allow_user_set'])
 	</cronentries>
 	<faqentries>
 	</faqentries>
+	<templateedits>
+	</templateedits>
 </product>
