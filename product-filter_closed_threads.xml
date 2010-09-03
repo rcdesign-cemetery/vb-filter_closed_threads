@@ -3,7 +3,7 @@
 <product productid="filter_closed_threads" active="1">
 	<title>Filter Closed Threads</title>
 	<description>Add option to hide closed threads</description>
-	<version>0.5</version>
+	<version>0.6</version>
 	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=filter_closed_threads]]></url>
 	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=productcheck&pid=filter_closed_threads]]></versioncheckurl>
 	<apm_releasedate>0</apm_releasedate>
@@ -62,6 +62,11 @@ if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "user LIKE 'fct_data'
 }]]></installcode>
 			<uninstallcode><![CDATA[if ($db->query_first("SHOW COLUMNS FROM " . TABLE_PREFIX . "usertextfield LIKE 'fct_data'"))
     $db->query_write("ALTER TABLE " . TABLE_PREFIX . "usertextfield DROP `fct_data`");]]></uninstallcode>
+		</code>
+		<code version="0.6">
+			<installcode><![CDATA[$db->query_write("ALTER TABLE " .TABLE_PREFIX. "thread ADD INDEX `openthreads` ( `forumid` , `visible` , `sticky` , `open`  , `lastpost`)
+");]]></installcode>
+			<uninstallcode><![CDATA[$db->query_write(" ALTER TABLE " .TABLE_PREFIX. "thread DROP INDEX `openthreads`");]]></uninstallcode>
 		</code>
 	</codes>
 	<templates>
@@ -124,20 +129,11 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
-			<title>Modify threads select query</title>
-			<hookname>forumdisplay_query</hookname>
-			<phpcode><![CDATA[if ($fct_closed)
-{
-  
-  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
-}]]></phpcode>
-		</plugin>
-		<plugin active="1" executionorder="5">
 			<title>Modify threadid select query</title>
 			<hookname>forumdisplay_query_threadid</hookname>
 			<phpcode><![CDATA[if ($fct_closed)
 {
-  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
+  $hook_query_where .= ' AND thread.open = 1 ';
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
@@ -145,7 +141,7 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
 			<hookname>forumdisplay_query_threadscount</hookname>
 			<phpcode><![CDATA[if ($fct_closed)
 {
-  $hook_query_where .= ' AND (thread.open = 1 OR thread.sticky = 1) ';
+  $hook_query_where .= ' AND thread.open = 1 ';
 }]]></phpcode>
 		</plugin>
 		<plugin active="1" executionorder="5">
