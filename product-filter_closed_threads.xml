@@ -3,7 +3,7 @@
 <product productid="filter_closed_threads" active="1">
 	<title>Filter Closed Threads</title>
 	<description>Add option to hide closed threads</description>
-	<version>0.6</version>
+	<version>0.7</version>
 	<url><![CDATA[http://www.vbulletin.org/forum/misc.php?do=producthelp&pid=filter_closed_threads]]></url>
 	<versioncheckurl><![CDATA[http://www.vbulletin.org/forum/misc.php?do=productcheck&pid=filter_closed_threads]]></versioncheckurl>
 	<apm_releasedate>0</apm_releasedate>
@@ -120,8 +120,24 @@ $this->validfields['fct_allow_user_set'] = array(TYPE_BOOL, REQ_NO);]]></phpcode
     $pattern = '<div class="options_input_block">
 					<label for="sel_daysprune">\' . vB_Template_Runtime::parsePhrase("show_threads_from_the") . \'</label>';
     $replace = vB_Template::fetch_template_raw('filter_closed_threads_template') . $pattern;
-
+    
+    $before_patch = $vbulletin->templatecache['FORUMDISPLAY'];
     $vbulletin->templatecache['FORUMDISPLAY'] = str_replace( $pattern, $replace, $vbulletin->templatecache['FORUMDISPLAY'] );
+    if ($before_patch == $vbulletin->templatecache['FORUMDISPLAY'])
+    {
+        $err_message = sprintf("Product '%s', error in hook %s : can't modify template '%s'",
+                            'Filter Closed Threads',
+                            'forumdisplay_complete',
+                            'FORUMDISPLAY');
+        error_log($err_message); // Send to PHP error log
+        if ($vbulletin->debug)
+        {
+            trigger_error($err_message, E_USER_WARNING); // Display on page
+            require_once(DIR . '/includes/functions_log_error.php');
+            log_vbulletin_error($err_message, 'php'); // Send to vB error log
+        }
+        unset($err_message, $before_patch);
+    }
 
     vB_Template::preRegister('FORUMDISPLAY', array( 'closed_selection' => $closed_selection ));
 
